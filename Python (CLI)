@@ -11,3 +11,5 @@ python pid_simulation.py --plant first --tau 1.0 --kp 1.5 --ki 0.5 --kd 0.05 --t
 #Python (GUI sliders)
 python pid_gui.py
 
+#MATLAB
+Open matlab/pid_simulation.m and press Run (▶). Adjust parameters at the top.
