@@ -1,0 +1,12 @@
+CLI Parameters (Python)
+
+--plant {first,second}    Plant type
+--tau FLOAT               Time constant for first-order (default 1.0)
+--wn FLOAT                Natural frequency for second-order (default 2.0)
+--zeta FLOAT              Damping ratio for second-order (default 0.3)
+--kp FLOAT                Proportional gain (default 1.0)
+--ki FLOAT                Integral gain (default 0.0)
+--kd FLOAT                Derivative gain (default 0.0)
+--tend FLOAT              Simulation end time (default 10.0)
+--noise FLOAT             Measurement noise std dev (default 0.0)
+--dt FLOAT                Time step for fallback integrator (default 0.001)
