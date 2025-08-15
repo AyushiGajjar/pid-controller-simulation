@@ -1,0 +1,151 @@
+import argparse, sys
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Try to use python-control if available
+try:
+    import control as ctl
+    HAVE_CTL = True
+except Exception:
+    HAVE_CTL = False
+
+def step_metrics(t, y, y_final=None):
+    if y_final is None:
+        y_final = y[-1]
+    y10 = 0.1 * y_final
+    y90 = 0.9 * y_final
+    # Rise time
+    try:
+        t_rise = t[np.where(y >= y90)[0][0]] - t[np.where(y >= y10)[0][0]]
+    except Exception:
+        t_rise = np.nan
+    # Overshoot
+    y_peak = np.max(y)
+    OS = max(0.0, (y_peak - y_final) / max(1e-9, y_final) * 100.0)
+    # Settling time (2%)
+    tol = 0.02 * max(1.0, abs(y_final))
+    within = np.where(np.abs(y - y_final) <= tol)[0]
+    t_settle = np.nan
+    if len(within):
+        # must stay within afterwards
+        for idx in within:
+            if np.all(np.abs(y[idx:] - y_final) <= tol):
+                t_settle = t[idx]
+                break
+    # SSE
+    sse = abs(y_final - 1.0)  # step amplitude = 1
+    return dict(rise_time=t_rise, overshoot=OS, settling_time=t_settle, sse=sse)
+
+def simulate_numpy(plant="first", tau=1.0, wn=2.0, zeta=0.3,
+                   kp=1.0, ki=0.0, kd=0.0, tend=10.0, dt=0.001, noise=0.0):
+    """
+    Discrete-time simulation with parallel PID on a simple plant.
+    Plant state-space:
+      first-order: x_dot = (-1/tau)*x + (1/tau)*u, y = x
+      second-order: x_dot = [0 1; -wn^2, -2*zeta*wn] x + [0; wn^2] u, y = x1
+    """
+    n = int(tend / dt) + 1
+    t = np.linspace(0, tend, n)
+    r = np.ones_like(t)  # unit step
+
+    if plant == "first":
+        A = np.array([[-1.0/tau]])
+        B = np.array([[1.0/tau]])
+        C = np.array([[1.0]])
+        x = np.zeros((1, 1))
+    else:
+        A = np.array([[0.0, 1.0],
+                      [-wn**2, -2.0*zeta*wn]])
+        B = np.array([[0.0],
+                      [wn**2]])
+        C = np.array([[1.0, 0.0]])
+        x = np.zeros((2, 1))
+
+    y = np.zeros(n)
+    u = np.zeros(n)
+    e_int = 0.0
+    e_prev = 0.0
+
+    for k in range(n):
+        # output with noise
+        yk = float(C @ x) + (np.random.randn() * noise if noise > 0 else 0.0)
+        y[k] = yk
+
+        # error
+        e = r[k] - yk
+
+        # PID (parallel form)
+        e_int += e * dt
+        de = (e - e_prev) / dt if k > 0 else 0.0
+        u[k] = kp * e + ki * e_int + kd * de
+        e_prev = e
+
+        # plant integration (forward Euler)
+        x = x + (A @ x + B * u[k]) * dt
+
+    return t, r, y, u
+
+def simulate_control(plant="first", tau=1.0, wn=2.0, zeta=0.3,
+                     kp=1.0, ki=0.0, kd=0.0, tend=10.0):
+    s = ctl.TransferFunction.s
+    if plant == "first":
+        G = 1 / (tau*s + 1)
+    else:
+        G = (wn**2) / (s**2 + 2*zeta*wn*s + wn**2)
+
+    C = kp + ki/s + kd*s
+    T = ctl.feedback(C*G, 1)  # closed-loop
+    t, y = ctl.step_response(T, T=np.linspace(0, tend, 2000))
+    r = np.ones_like(t)
+    # For plotting controller effort (approx), simulate series form with error → not trivial here.
+    u = np.full_like(t, np.nan)  # left as N/A with control library route
+    return t, r, y, u
+
+def main():
+    ap = argparse.ArgumentParser(description="PID Simulation")
+    ap.add_argument("--plant", choices=["first","second"], default="first")
+    ap.add_argument("--tau", type=float, default=1.0)
+    ap.add_argument("--wn", type=float, default=2.0)
+    ap.add_argument("--zeta", type=float, default=0.3)
+    ap.add_argument("--kp", type=float, default=1.0)
+    ap.add_argument("--ki", type=float, default=0.0)
+    ap.add_argument("--kd", type=float, default=0.0)
+    ap.add_argument("--tend", type=float, default=10.0)
+    ap.add_argument("--dt", type=float, default=0.001)
+    ap.add_argument("--noise", type=float, default=0.0)
+    args = ap.parse_args()
+
+    if HAVE_CTL:
+        t, r, y, u = simulate_control(args.plant, args.tau, args.wn, args.zeta,
+                                      args.kp, args.ki, args.kd, args.tend)
+        title_extra = "(python-control)"
+    else:
+        t, r, y, u = simulate_numpy(args.plant, args.tau, args.wn, args.zeta,
+                                    args.kp, args.ki, args.kd, args.tend, args.dt, args.noise)
+        title_extra = "(NumPy fallback)"
+
+    # Metrics
+    m = step_metrics(t, y, y_final=1.0)
+
+    # Plot
+    plt.figure()
+    plt.plot(t, r, label="Reference (step)")
+    plt.plot(t, y, label="Output")
+    if np.isfinite(np.nanmean(u)):
+        plt.plot(t, (u - np.nanmin(u)) / (np.nanmax(u) - np.nanmin(u) + 1e-9),
+                 linestyle="--", label="Control Effort (scaled)")
+    plt.title(f"PID Step Response {title_extra}\n"
+              f"Kp={args.kp}, Ki={args.ki}, Kd={args.kd} | Plant={args.plant}")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    print("\n=== Step Metrics ===")
+    for k, v in m.items():
+        print(f"{k:>14}: {v:.4g}")
+
+if __name__ == "__main__":
+    sys.exit(main())
