@@ -1,0 +1,25 @@
+
+---
+
+## 🧩 `.gitignore`
+
+```gitignore
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# MATLAB
+*.asv
+*.mex*
+*.slxc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Plots/outputs
+*.png
+!docs/images/screenshot_python.png
+!docs/images/screenshot_matlab.png
