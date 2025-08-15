@@ -1,0 +1,16 @@
+pid-controller-simulation/
+├─ README.md
+├─ .gitignore
+├─ LICENSE
+├─ docs/
+│  ├─ images/
+│  │  ├─ screenshot_python.png        # replace with your actual plot
+│  │  └─ screenshot_matlab.png        # replace with your actual plot
+│  └─ notes.md
+├─ python/
+│  ├─ requirements.txt
+│  ├─ pid_simulation.py               # CLI version (control or pure numpy)
+│  └─ pid_gui.py                      # optional sliders (Tkinter)
+└─ matlab/
+   ├─ pid_simulation.m                # script to run & plot
+   └─ plant_models.m                  # common plant definitions
